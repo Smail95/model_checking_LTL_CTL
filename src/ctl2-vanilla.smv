@@ -1,0 +1,47 @@
+MODULE main
+VAR
+demP : boolean;
+demQ : boolean;
+P : process processus(demP, demQ);
+Q : process processus(demQ, demP);
+
+ASSIGN
+init(demP) := FALSE;
+init(demQ) := FALSE;
+
+--P1: exclusion mutuelle
+SPEC AG !(P.state = critical & Q.state = critical);
+
+--P3: tout processus demandant l'accès à l'état critique pourra l'obtenir
+SPEC AG (P.state = entering -> EF P.state = critical) & AG(Q.state = entering -> EF Q.state = critical);
+
+--P4: l'ordre d'accès à la section critique respecte l'ordre des demandes d'accès
+SPEC A[P.state != critical U P.state = entering] & A[Q.state != critical U Q.state = entering];
+
+--P2: tout processus demandant l'accès à la section critique finira (forcemant) par l'obtenir
+SPEC AG (P.state = entering -> AF P.state = critical);
+	
+	
+MODULE processus(demX, demY)
+VAR
+	state : {idle, entering, loop, critical, exiting};
+	
+ASSIGN
+	init(state) := idle;
+	next(state) :=
+		case
+			state = idle : entering;
+			state = entering : loop;
+			state = loop & demY: loop;
+			state = loop & !demY: critical;
+			state = critical : exiting;
+			state = exiting : idle;
+		esac;
+	next(demX) :=
+		case
+			state = entering : TRUE;
+			state = exiting : FALSE;
+			TRUE : demX;
+		esac;
+FAIRNESS
+	running

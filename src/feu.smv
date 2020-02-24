@@ -1,0 +1,161 @@
+MODULE main
+ VAR
+   C_A : boolean;
+   C_P       : boolean;
+   short : boolean;
+   long : boolean;
+   restart : boolean;
+   enable_small : boolean;
+   enable_hwy: boolean;
+   peut_passer : boolean;
+   
+   capteur   : process capteur(C_A, C_P, peut_passer);
+   temporisateur : process temporisateur(restart, short, long);
+   feu_secondaire : process feu_secondaire(enable_small, short, long, C_A, restart, enable_hwy, peut_passer);
+   feu_principale : process feu_principale(enable_small, short, long, C_P, restart, enable_hwy);
+ASSIGN
+   init(C_A) := TRUE;
+   init(C_P) := FALSE;
+   init(restart) := FALSE;
+   init(short) := FALSE;
+   init(long) := FALSE;
+   init(enable_small) := FALSE;
+   init(enable_hwy) := FALSE;
+   init(peut_passer) := FALSE;
+
+
+-- si un des feux est à GREEN alors l'autre est forcement RED ou YELLOW
+ SPEC AG (feu_secondaire.state = green -> (feu_principale.state = red | feu_principale.state = yellow))
+ SPEC AG (feu_principale.state = green -> (feu_secondaire.state = red | feu_secondaire.state = yellow))
+
+-- chaque feux repassera dans l'état GREEN
+SPEC (AG AF feu_principale.state = green) & (AG AF feu_principale.state = green)
+
+-- une voiture restant suffisamment longtemps en attente d'accès au carrefour finira par y avoir accès
+SPEC AG (feu_secondaire.state = red -> AF feu_secondaire.state = green) 
+SPEC AG(feu_principale.state = red -> AF feu_principale.state = green)
+
+MODULE feu_principale(enable_small, short, long, C_P, restart, enable_hwy)
+ VAR
+	state: {green, yellow, red};
+ ASSIGN
+    init(state) := green;
+    next(state) :=
+	case
+		state = green & C_P & long : yellow;
+		state = green & !(C_P & long) : green;
+		state = yellow & !short : yellow;
+		state = yellow & short : red;
+		state = red & !enable_hwy : red;
+		state = red & enable_hwy : green;
+	esac;
+    next(enable_small) :=
+	case
+		state = yellow & next(state) = red : TRUE;
+		TRUE : enable_small; --test
+	esac;
+    next(enable_hwy) :=
+	case
+		state = red & enable_hwy : FALSE;
+		TRUE: enable_hwy;
+	esac;
+    next(restart) :=
+	case
+		state = red & enable_hwy : TRUE;
+		state = green & next(state) = yellow : TRUE;
+		TRUE : restart;
+	esac;
+		
+MODULE feu_secondaire(enable_small, short, long, C_A, restart, enable_hwy, peut_passer)
+  VAR
+	state : {green, yellow, red};
+  ASSIGN
+    init(state) := red;
+    next(state) :=
+	case
+		state = red & enable_small : green; 
+		state = red & !enable_small : red;
+		state = yellow & short : red;
+		state = yellow & !short : yellow;
+		state = green & (C_A | long) : yellow;
+		state = green & !(C_A | long) : green;
+		TRUE : state;
+	esac;
+   next(enable_small) :=
+	case
+		state = red & enable_small : FALSE;
+		TRUE : enable_small;
+	esac;
+   next(enable_hwy) :=
+	case
+		state = yellow & short : TRUE;
+		TRUE : enable_hwy;
+	esac;
+  next(restart) :=
+	case
+		state = red & enable_small : TRUE;
+		state = green & next(state) = yellow : TRUE;
+		TRUE : restart;
+	esac;
+  next(peut_passer) :=
+	case
+		next(state) = green : TRUE;
+		TRUE : peut_passer;
+	esac;
+
+MODULE temporisateur(restart, short, long)
+ VAR
+   state : {st_start, st_short, st_long};
+ ASSIGN
+  init(state) := st_start;
+  next(state) :=
+	case
+		restart : st_start;
+		state = st_start : {st_start, st_short};
+		state = st_short : {st_short, st_long};
+		state = st_long : st_long;
+	esac;
+  next(restart) :=
+	case
+		state = st_start : FALSE;
+		TRUE : restart;
+	esac;
+  next(short) :=
+	case
+		next(state) = st_short : TRUE;
+		next(state) = st_long : TRUE;
+		TRUE : FALSE;
+	esac;
+  next(long) :=
+	case
+		next(state) = st_long : TRUE;
+		TRUE : FALSE;
+	esac;
+FAIRNESS state = st_start; FAIRNESS state = st_short; FAIRNESS state = st_long;
+MODULE capteur(C_A, C_P, peut_passer)
+ VAR
+   state : {absent, present};
+ ASSIGN
+   init(state) := absent;
+   next(state) :=
+     case
+       state = absent  : {absent, present};
+       state = present & peut_passer : {absent, present};
+	state = present & !peut_passer : present;
+     esac;
+   next(C_A) :=
+     case
+       next(state) = absent : TRUE;
+       next(state) = present : FALSE;
+     esac;
+   next(C_P) :=
+     case
+       next(state) = present : TRUE;
+       next(state) = absent : FALSE;
+     esac;
+   next(peut_passer) :=
+	case
+		state = present & next(state) = absent : FALSE;
+		TRUE : peut_passer;
+	esac; 
+

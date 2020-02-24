@@ -1,0 +1,46 @@
+MODULE main
+ VAR
+   s : boolean;
+   y0        : boolean;
+   y1        : boolean;
+   
+   proc1     : process user(s, y0, y1, FALSE);
+   proc2     : process user(s, y1, y0, TRUE);
+ ASSIGN
+   init(s) := FALSE;
+   init(y0) := FALSE;
+   init(y1) := FALSE;
+   
+ LTLSPEC G ! (proc1.state = critical & proc2.state = critical)
+ LTLSPEC G (proc1.state = entering -> F proc1.state = critical) 
+       & G (proc2.state = entering -> F proc2.state = critical)
+ LTLSPEC  G F (proc1.state = critical) & G F (proc2.state = critical)
+MODULE user(s, y_i, y_1i, i)
+ VAR
+   state : {idle, noncritical, entering, critical, exiting};
+ ASSIGN
+   init(state) := idle;
+   next(state) :=
+     case
+       state = idle                  : noncritical;
+       state = noncritical	                  : entering;
+       state = entering & (!y_1i | s !=i) : critical;
+       state = critical                           : exiting;
+       state = exiting                            : idle;
+       TRUE                                       : state;
+     esac;
+   next(s) :=
+     case
+       state = noncritical : i;
+       TRUE                : s;
+     esac;
+   next(y_i) :=
+     case
+       state = noncritical : TRUE;
+       state = exiting     : FALSE;
+       TRUE                : y_i;
+     esac;
+	 
+FAIRNESS
+	running 
+  

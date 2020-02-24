@@ -1,0 +1,48 @@
+MODULE main
+VAR
+demP : boolean;
+demQ : boolean;
+turn : boolean;
+
+P : process processus(demP, demQ, turn, FALSE);
+Q : process processus(demQ, demP, turn, TRUE);
+
+ASSIGN
+init(demP) := FALSE;
+init(demQ) := FALSE;
+init(turn) := FALSE;
+
+SPEC AG !(P.state = critical & Q.state = critical);
+SPEC AG (P.state = entering -> EF P.state = critical) & AG(Q.state = entering -> EF Q.state = critical);
+SPEC A[P.state != critical U P.state = entering] & A[Q.state !=critical U Q.state = entering];
+SPEC AG (P.state = entering -> AF P.state = critical) & AG (Q.state = entering -> AF Q.state = critical);
+	
+	
+MODULE processus(demX, demY, turn, i)
+VAR
+	state : {idle, entering, loop, critical, exiting};
+	
+ASSIGN
+	init(state) := idle;
+	next(state) :=
+		case
+			state = idle : entering;
+			state = entering : loop;
+			state = loop & (!demY | turn = i): critical;
+			state = critical : exiting;
+			state = exiting : idle;
+			TRUE : state;
+		esac;
+	next(demX) :=
+		case
+			state = entering : TRUE;
+			state = exiting : FALSE;
+			TRUE : demX;
+		esac;
+	next(turn) :=
+		case
+			state = entering : !i;
+			TRUE : turn;
+		esac;
+FAIRNESS
+	running
